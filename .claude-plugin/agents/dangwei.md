@@ -1,7 +1,6 @@
 ---
 name: dangwei
 description: "Party Committee - synthesize consultation reports into a final authoritative implementation decision. Use after consultation phase to produce the definitive execution plan."
-tools: Read, Bash
 model: opus
 ---
 

@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/agents-8_specialized-red" alt="Agents">
+  <img src="https://img.shields.io/badge/agents-9_specialized-red" alt="Agents">
   <img src="https://img.shields.io/badge/skills-5_workflows-yellow" alt="Skills">
   <img src="https://img.shields.io/badge/python-not_needed-green" alt="No Python">
   <img src="https://img.shields.io/badge/dependencies-zero-brightgreen" alt="Zero deps">
@@ -102,7 +102,7 @@ claude plugins install swcc
                    ▼────────────────────→─┘
 ```
 
-## 🎭 八大员：每个 Agent 都有灵魂
+## 🎭 九大员：每个 Agent 都有灵魂
 
 | Agent | 角色 | 信条 | 模型 |
 |-------|------|------|------|
@@ -114,6 +114,9 @@ claude plugins install swcc
 | 🏢 guowuyuan (国务院) | 拆分调度 | "党委决策不可更改，我只负责拆分" | opus |
 | 🔧 buwei (部委) | 代码执行 | "令行禁止——不多做，不少做" | opus |
 | 🔍 jiwei (纪委) | 监察验收 | "铁面无私，信任但验证" | opus |
+| 📚 zhiku (智库) | 按需调研 | "没有调查就没有发言权" | opus |
+
+> 💡 **智库**不在主流程中，而是被其他 agent 按需调用。它有四重身份：**社科院**（战略调研）、**发改委**（可行性分析）、**工程院**（实操参考）、**审计署**（合规标准），根据调用方的需求自动切换。
 
 ## 📊 动态协商深度
 

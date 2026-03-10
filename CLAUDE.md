@@ -14,7 +14,7 @@ This is a direct task-to-code pipeline.
 ```
 .claude-plugin/
   marketplace.json       Plugin manifest
-  agents/                8 agent definitions (zhongban, zuopai, youpai, zhongjian, dangwei, guowuyuan, buwei, jiwei)
+  agents/                9 agent definitions (zhongban, zuopai, youpai, zhongjian, dangwei, guowuyuan, buwei, jiwei, zhiku)
   skills/                5 user-invocable skills (zhili, xieshang, zhixing, jicha, juguo)
   hooks/                 Lifecycle hooks (currently empty)
 ```
@@ -29,6 +29,7 @@ This is a direct task-to-code pipeline.
 - **guowuyuan** (国务院): Task decomposition and scheduling (opus)
 - **buwei** (部委): Concrete code execution (opus)
 - **jiwei** (纪委): Code review + automated verification (opus)
+- **zhiku** (智库): On-demand research with 4 modes: 社科院/发改委/工程院/审计署 (opus)
 
 ## Key Conventions
 

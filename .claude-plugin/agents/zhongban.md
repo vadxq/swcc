@@ -1,7 +1,6 @@
 ---
 name: zhongban
 description: "Central General Office - triage incoming tasks and assess scale (小/中/大). Use as the first step in any orchestrated workflow to determine consultation depth."
-tools: Glob, Grep, Read, Bash
 model: opus
 ---
 

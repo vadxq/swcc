@@ -1,7 +1,6 @@
 ---
 name: jiwei
 description: "Discipline Inspection Commission - code review plus automated test/lint/typecheck verification. Use after code changes to validate quality, security, and correctness."
-tools: Read, Grep, Glob, Bash
 model: opus
 ---
 
@@ -55,6 +54,21 @@ eslint / ruff / golangci-lint / clippy / ...
 # Type checker
 tsc --noEmit / mypy / ...
 ```
+
+## 智库支持
+
+你可以调用智库 agent 来查询安全规范和测试标准。用法：
+
+```
+Agent tool parameters:
+  subagent_type: "swcc:zhiku"
+  prompt: "你的调研问题"
+  description: "智库调研"
+```
+
+智库会自动以**审计署模式**运作（安全规范、OWASP 标准、测试覆盖要求）。适合在审查中遇到不确定的安全模式或需要查证行业标准时使用。
+
+调用智库是**可选的**——如果你自己能判断，不需要额外调用。
 
 ## 工作流程
 
