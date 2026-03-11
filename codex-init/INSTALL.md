@@ -2,13 +2,58 @@
 
 This repository keeps the editable Claude-side source in `CLAUDE.md` and `.claude-plugin/`, then regenerates the managed Codex files under `.codex/`.
 
+## User Entry Scripts
+
+- `codex-init/install.sh` — one-step sync + install entrypoint
+- `codex-init/uninstall.sh` — one-step uninstall entrypoint
+
 ## Managed Codex Files
 
 - `.codex/skills/*` — the 5 user-invocable Codex skills
 - `.codex/skills/swcc/agents/*` — the 10 shared SWCC role prompts
-- `.codex/skills/swcc/scripts/*` — install and uninstall helpers
+- `.codex/skills/swcc/scripts/*` — internal install and uninstall helpers
 - `.codex/scripts/sync-from-claude.py` — the generator
 - `.codex/generated-manifest.json` — the managed file manifest
+
+## One-Step Install
+
+From the repository root:
+
+```bash
+bash codex-init/install.sh
+```
+
+Install into a custom skills directory:
+
+```bash
+bash codex-init/install.sh --target /path/to/codex/skills
+```
+
+What it does:
+
+- runs `sync.sh` to regenerate `.codex/`
+- installs managed skill symlinks into `${CODEX_HOME}/skills` when `CODEX_HOME` is set, otherwise `~/.codex/skills`
+- forwards install options such as `--target DIR`, `--force`, and `--dry-run`
+
+## One-Step Uninstall
+
+From the repository root:
+
+```bash
+bash codex-init/uninstall.sh
+```
+
+Remove from a custom skills directory:
+
+```bash
+bash codex-init/uninstall.sh --target /path/to/codex/skills
+```
+
+What it does:
+
+- removes the managed skill symlinks from `${CODEX_HOME}/skills` when `CODEX_HOME` is set, otherwise `~/.codex/skills`
+- supports `--target DIR` and `--dry-run`
+- skips unmanaged paths instead of deleting them
 
 ## Sync From Claude
 
@@ -32,21 +77,23 @@ What it does:
 - keeps skill and agent content close to the Claude source, with only Codex-specific path and invocation rewrites
 - does **not** modify any file outside `.codex/`
 
-## Install Into Codex
+## Internal Helpers
 
-After syncing, install the repo-local skill root:
+If you want to call the generated helpers directly after syncing:
 
 ```bash
 bash .codex/skills/swcc/scripts/install.sh
+bash .codex/skills/swcc/scripts/uninstall.sh
 ```
 
-What it does:
+They support `--target /path/to/codex/skills`, and the install helper links these managed directories:
 
-- creates `./.agents/` if needed
-- links `./.agents/skills` to `.codex/skills/`
-- keeps the editable Claude source in `CLAUDE.md` and `.claude-plugin/`
-
-After installing, restart Codex or reopen the repository.
+- `jicha`
+- `juguo`
+- `xieshang`
+- `zhili`
+- `zhixing`
+- `swcc`
 
 ## Verify
 
@@ -67,14 +114,6 @@ Expected skill names:
 - `xieshang`
 - `zhili`
 - `zhixing`
-
-## Uninstall
-
-Remove repo-local symlinks:
-
-```bash
-bash .codex/skills/swcc/scripts/uninstall.sh
-```
 
 ## Notes
 

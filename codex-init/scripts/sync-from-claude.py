@@ -30,6 +30,7 @@ MANAGED_SHARED_AGENTS = [
     "zhongjian",
     "zuopai",
 ]
+INSTALL_COMPONENTS = [*MANAGED_SKILLS, "swcc"]
 SKIPPED_CLAUDE_SKILLS = ["zhengyanshi", "zhiku"]
 SKIPPED_CLAUDE_AGENTS: list[str] = []
 
@@ -129,7 +130,7 @@ def replace_subagent_refs(text: str) -> str:
         agent_type = ROLE_AGENT_TYPES.get(role, "default")
         return (
             f'{indent}agent_type: "{agent_type}"\n'
-            f'{indent}agent_prompt: ".codex/skills/swcc/agents/{role}.md"'
+            f'{indent}agent_prompt: "../swcc/agents/{role}.md"'
         )
 
     return SUBAGENT_PATTERN.sub(repl, text)
@@ -188,12 +189,12 @@ def render_runtime_md() -> str:
     skill_count = len(MANAGED_SKILLS)
     return f"""# SWCC Codex Runtime
 
-This folder provides the shared runtime rules for the {skill_count} Codex skills in `.codex/skills/`.
+This folder provides the shared runtime rules for the {skill_count} user-invocable Codex skills plus the shared `swcc/` runtime directory installed into the same skills root.
 
 ## Core Rules
 
 - Treat the invoking skill as the **coordinator**. Its job is to parse arguments, dispatch roles, persist artifacts, integrate accepted code changes, and report status.
-- Treat `.codex/skills/swcc/agents/*.md` as the source-of-truth role prompts. Read the relevant file before spawning each role.
+- Treat `../agents/*.md` as the source-of-truth role prompts. Read the relevant file before spawning each role.
 - Keep all intermediate artifacts under `.tmp/swcc/`. Create the directory if it does not exist.
 - Save every completed role output to disk before moving to the next phase.
 - Preserve the Chinese political-role voice from the bundled role prompts.
@@ -280,17 +281,63 @@ def render_install_md() -> str:
     skill_count = len(MANAGED_SKILLS)
     agent_count = len(MANAGED_SHARED_AGENTS)
     skill_list = "\n".join(f"- `{name}`" for name in MANAGED_SKILLS)
+    install_list = "\n".join(f"- `{name}`" for name in INSTALL_COMPONENTS)
     return f"""# {short_name} Codex Install
 
 This repository keeps the editable Claude-side source in `CLAUDE.md` and `.claude-plugin/`, then regenerates the managed Codex files under `.codex/`.
+
+## User Entry Scripts
+
+- `codex-init/install.sh` — one-step sync + install entrypoint
+- `codex-init/uninstall.sh` — one-step uninstall entrypoint
 
 ## Managed Codex Files
 
 - `.codex/skills/*` — the {skill_count} user-invocable Codex skills
 - `.codex/skills/swcc/agents/*` — the {agent_count} shared SWCC role prompts
-- `.codex/skills/swcc/scripts/*` — install and uninstall helpers
+- `.codex/skills/swcc/scripts/*` — internal install and uninstall helpers
 - `.codex/scripts/sync-from-claude.py` — the generator
 - `.codex/generated-manifest.json` — the managed file manifest
+
+## One-Step Install
+
+From the repository root:
+
+```bash
+bash codex-init/install.sh
+```
+
+Install into a custom skills directory:
+
+```bash
+bash codex-init/install.sh --target /path/to/codex/skills
+```
+
+What it does:
+
+- runs `sync.sh` to regenerate `.codex/`
+- installs managed skill symlinks into `${{CODEX_HOME}}/skills` when `CODEX_HOME` is set, otherwise `~/.codex/skills`
+- forwards install options such as `--target DIR`, `--force`, and `--dry-run`
+
+## One-Step Uninstall
+
+From the repository root:
+
+```bash
+bash codex-init/uninstall.sh
+```
+
+Remove from a custom skills directory:
+
+```bash
+bash codex-init/uninstall.sh --target /path/to/codex/skills
+```
+
+What it does:
+
+- removes the managed skill symlinks from `${{CODEX_HOME}}/skills` when `CODEX_HOME` is set, otherwise `~/.codex/skills`
+- supports `--target DIR` and `--dry-run`
+- skips unmanaged paths instead of deleting them
 
 ## Sync From Claude
 
@@ -314,21 +361,18 @@ What it does:
 - keeps skill and agent content close to the Claude source, with only Codex-specific path and invocation rewrites
 - does **not** modify any file outside `.codex/`
 
-## Install Into Codex
+## Internal Helpers
 
-After syncing, install the repo-local skill root:
+If you want to call the generated helpers directly after syncing:
 
 ```bash
 bash .codex/skills/swcc/scripts/install.sh
+bash .codex/skills/swcc/scripts/uninstall.sh
 ```
 
-What it does:
+They support `--target /path/to/codex/skills`, and the install helper links these managed directories:
 
-- creates `./.agents/` if needed
-- links `./.agents/skills` to `.codex/skills/`
-- keeps the editable Claude source in `CLAUDE.md` and `.claude-plugin/`
-
-After installing, restart Codex or reopen the repository.
+{install_list}
 
 ## Verify
 
@@ -346,14 +390,6 @@ Expected skill names:
 
 {skill_list}
 
-## Uninstall
-
-Remove repo-local symlinks:
-
-```bash
-bash .codex/skills/swcc/scripts/uninstall.sh
-```
-
 ## Notes
 
 - Source of truth: `CLAUDE.md` and `.claude-plugin/`
@@ -366,11 +402,14 @@ bash .codex/skills/swcc/scripts/uninstall.sh
 
 
 def render_install_script() -> str:
-    return """#!/usr/bin/env bash
+    components = " ".join(INSTALL_COMPONENTS)
+    template = """#!/usr/bin/env bash
 set -euo pipefail
 
 DRY_RUN=0
 FORCE=0
+TARGET_ROOT=""
+COMPONENTS=(__COMPONENTS__)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -380,13 +419,25 @@ while [[ $# -gt 0 ]]; do
     --force)
       FORCE=1
       ;;
+    --target)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "--target requires a directory path" >&2
+        exit 1
+      fi
+      TARGET_ROOT="$1"
+      ;;
     -h|--help)
       cat <<'USAGE'
-Usage: .codex/skills/swcc/scripts/install.sh [--force] [--dry-run]
+Usage: .codex/skills/swcc/scripts/install.sh [--target DIR] [--force] [--dry-run]
 
 Options:
-  --force     Replace existing destinations that are not the expected symlink
-  --dry-run   Print planned actions without changing the filesystem
+  --target DIR Install into the specified Codex skills directory
+  --force      Replace existing destinations that are not the expected symlink
+  --dry-run    Print planned actions without changing the filesystem
+
+Default target:
+  ${CODEX_HOME}/skills when CODEX_HOME is set, otherwise ~/.codex/skills
 USAGE
       exit 0
       ;;
@@ -407,7 +458,14 @@ if [[ ! -d "$SOURCE_ROOT" ]]; then
   exit 1
 fi
 
-TARGET_ROOT="$REPO_ROOT/.agents/skills"
+if [[ -z "$TARGET_ROOT" ]]; then
+  if [[ -n "${CODEX_HOME:-}" ]]; then
+    TARGET_ROOT="$CODEX_HOME/skills"
+  else
+    TARGET_ROOT="$HOME/.codex/skills"
+  fi
+fi
+TARGET_ROOT="${TARGET_ROOT%/}"
 
 run() {
   if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -418,62 +476,101 @@ run() {
 }
 
 done_msg() {
-  printf '\nDone. Restart Codex or reopen the repository so it can discover the linked skills.\n'
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    printf '\nDry run complete. No filesystem changes were made.\n'
+  else
+    printf '\nDone. Managed skills are installed in %s\n' "$TARGET_ROOT"
+    printf 'Restart Codex or reopen the repository so it can discover the linked skills.\n'
+  fi
 }
 
-parent_dir="$(dirname "$TARGET_ROOT")"
-run "mkdir -p \"$parent_dir\""
-if [[ -L "$TARGET_ROOT" ]]; then
-  current_target="$(readlink "$TARGET_ROOT")"
-  if [[ "$current_target" == "$SOURCE_ROOT" ]]; then
-    printf 'Already installed: %s -> %s\n' "$TARGET_ROOT" "$current_target"
-    done_msg
-    exit 0
+installed_msg() {
+  local destination_path="$1"
+  local source_path="$2"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    printf '[dry-run] would install: %s -> %s\n' "$destination_path" "$source_path"
+  else
+    printf 'Installed: %s -> %s\n' "$destination_path" "$source_path"
   fi
-  if [[ "$FORCE" -ne 1 ]]; then
-    echo "Destination exists with different symlink target: $TARGET_ROOT -> $current_target" >&2
-    echo "Re-run with --force to replace it." >&2
+}
+
+install_one() {
+  local name="$1"
+  local source_path="$SOURCE_ROOT/$name"
+  local destination_path="$TARGET_ROOT/$name"
+
+  if [[ ! -d "$source_path" ]]; then
+    echo "Managed source directory not found: $source_path" >&2
     exit 1
   fi
-  run "rm -f \"$TARGET_ROOT\""
-elif [[ -e "$TARGET_ROOT" ]]; then
-  if [[ -d "$TARGET_ROOT" && -z "$(find "$TARGET_ROOT" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
-    run "rmdir \"$TARGET_ROOT\""
-    run "ln -s \"$SOURCE_ROOT\" \"$TARGET_ROOT\""
-    printf 'Installed: %s -> %s\n' "$TARGET_ROOT" "$SOURCE_ROOT"
-    done_msg
-    exit 0
+
+  if [[ -L "$destination_path" ]]; then
+    local current_target
+    current_target="$(readlink "$destination_path")"
+    if [[ "$current_target" == "$source_path" ]]; then
+      printf 'Already installed: %s -> %s\n' "$destination_path" "$current_target"
+      return
+    fi
+    if [[ "$FORCE" -ne 1 ]]; then
+      echo "Destination exists with different symlink target: $destination_path -> $current_target" >&2
+      echo "Re-run with --force to replace it." >&2
+      exit 1
+    fi
+    run "rm -f \"$destination_path\""
+  elif [[ -e "$destination_path" ]]; then
+    if [[ "$FORCE" -ne 1 ]]; then
+      echo "Destination already exists and is not a symlink: $destination_path" >&2
+      echo "Re-run with --force to replace it." >&2
+      exit 1
+    fi
+    run "rm -rf \"$destination_path\""
   fi
-  if [[ "$FORCE" -ne 1 ]]; then
-    echo "Destination already exists and is not a symlink: $TARGET_ROOT" >&2
-    echo "Re-run with --force to replace it." >&2
-    exit 1
-  fi
-  run "rm -rf \"$TARGET_ROOT\""
-fi
-run "ln -s \"$SOURCE_ROOT\" \"$TARGET_ROOT\""
-printf 'Installed: %s -> %s\n' "$TARGET_ROOT" "$SOURCE_ROOT"
+
+  run "ln -s \"$source_path\" \"$destination_path\""
+  installed_msg "$destination_path" "$source_path"
+}
+
+run "mkdir -p \"$TARGET_ROOT\""
+for name in "${COMPONENTS[@]}"; do
+  install_one "$name"
+done
 done_msg
 """
+    return template.replace("__COMPONENTS__", components)
 
 
 def render_uninstall_script() -> str:
-    return """#!/usr/bin/env bash
+    components = " ".join(INSTALL_COMPONENTS)
+    template = """#!/usr/bin/env bash
 set -euo pipefail
 
 DRY_RUN=0
+TARGET_ROOT=""
+COMPONENTS=(__COMPONENTS__)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run)
       DRY_RUN=1
       ;;
+    --target)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "--target requires a directory path" >&2
+        exit 1
+      fi
+      TARGET_ROOT="$1"
+      ;;
     -h|--help)
       cat <<'USAGE'
-Usage: .codex/skills/swcc/scripts/uninstall.sh [--dry-run]
+Usage: .codex/skills/swcc/scripts/uninstall.sh [--target DIR] [--dry-run]
 
 Options:
-  --dry-run   Print planned actions without changing the filesystem
+  --target DIR Remove managed symlinks from the specified Codex skills directory
+  --dry-run    Print planned actions without changing the filesystem
+
+Default target:
+  ${CODEX_HOME}/skills when CODEX_HOME is set, otherwise ~/.codex/skills
 USAGE
       exit 0
       ;;
@@ -489,7 +586,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 SOURCE_ROOT="$REPO_ROOT/.codex/skills"
 
-TARGET_ROOT="$REPO_ROOT/.agents/skills"
+if [[ -z "$TARGET_ROOT" ]]; then
+  if [[ -n "${CODEX_HOME:-}" ]]; then
+    TARGET_ROOT="$CODEX_HOME/skills"
+  else
+    TARGET_ROOT="$HOME/.codex/skills"
+  fi
+fi
+TARGET_ROOT="${TARGET_ROOT%/}"
 
 run() {
   if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -500,22 +604,48 @@ run() {
 }
 
 done_msg() {
-  printf '\nDone. Restart Codex or reopen the repository if the old skills are still cached.\n'
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    printf '\nDry run complete. No filesystem changes were made.\n'
+  else
+    printf '\nDone. Restart Codex or reopen the repository if the old skills are still cached.\n'
+  fi
 }
 
-if [[ -L "$TARGET_ROOT" ]]; then
-  current_target="$(readlink "$TARGET_ROOT")"
-  if [[ "$current_target" == "$SOURCE_ROOT" ]]; then
-    run "rm -f \"$TARGET_ROOT\""
-    printf 'Removed: %s\n' "$TARGET_ROOT"
-    done_msg
-    exit 0
-  fi
-fi
+remove_one() {
+  local name="$1"
+  local source_path="$SOURCE_ROOT/$name"
+  local destination_path="$TARGET_ROOT/$name"
 
-printf 'No SWCC repo-local skill root symlink found at %s\n' "$TARGET_ROOT"
-exit 0
+  if [[ -L "$destination_path" ]]; then
+    local current_target
+    current_target="$(readlink "$destination_path")"
+    if [[ "$current_target" == "$source_path" ]]; then
+      run "rm -f \"$destination_path\""
+      if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '[dry-run] would remove: %s\n' "$destination_path"
+      else
+        printf 'Removed: %s\n' "$destination_path"
+      fi
+      return
+    fi
+    printf 'Skipped unmanaged symlink: %s -> %s\n' "$destination_path" "$current_target"
+    return
+  fi
+
+  if [[ -e "$destination_path" ]]; then
+    printf 'Skipped unmanaged path: %s\n' "$destination_path"
+    return
+  fi
+
+  printf 'Not installed: %s\n' "$destination_path"
+}
+
+for name in "${COMPONENTS[@]}"; do
+  remove_one "$name"
+done
+done_msg
 """
+    return template.replace("__COMPONENTS__", components)
 
 
 def gather_source_inputs() -> list[str]:
